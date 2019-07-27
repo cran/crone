@@ -1,0 +1,287 @@
+\documentclass[12pt,a4paper]{article}
+
+\usepackage{amsfonts}
+\usepackage{amsmath}
+\usepackage{hyperref}
+\usepackage[backend=biber,sorting=none]{biblatex}
+
+\bibliography{BIBLIOGRAPHY}
+
+\author{James Foadi \\ 
+        email \href{mailto:j.foadi@bath.ac.uk}{j.foadi@bath.ac.uk}}
+\date{June, 2019}
+
+\title{Tutorial 3: Approximate phases and peak search}
+
+%\VignetteIndexEntry{Approximate phases and peak search}
+%\VignetteEngine{knitr::knitr}
+
+<<setup, eval= TRUE, include= FALSE, cache= FALSE, echo= FALSE>>=
+system ("biber tutorial03")
+@
+
+\begin{document}
+
+\maketitle
+
+\noindent This tutorial follows part of the demonstration in reference \cite{crn}.
+
+\section{Peak search with \texttt{local\_maxima}}
+The main goal of structural crystallography is to find the positional coordinates of all atoms in a given structure. The quantity that can be calculated using the experimental data is the electron density. The atomic coordinates can be extracted from the electron density as positions corresponding to the density peaks' maxima. The function in \texttt{crone} responsible for extracting such maxima is \texttt{local\_maxima}. In order to appreciate how this function works, let's load the structure called \emph{cyanate}.
+
+<<ch01>>=
+library(crone)
+sdata <- load_structure("cyanate")
+sdata
+@
+
+\noindent From the data in the list \texttt{sdata} we can create the exact analytic electron density using function \texttt{structure\_gauss}.
+
+\begin{center}
+<<ch02,out.width='3.2in'>>=
+rtmp <- structure_gauss(sdata,N=1000) # Grid with 1000 points
+plot(rtmp$x,rtmp$rr,type="l",xlab="x",ylab=expression(rho))
+@
+\end{center}
+
+\noindent This structure is made of three atoms (three peaks), roughly located between 0 and 1, close to 2 and close to 3. In order to find out the correct location of the peaks, and thus the coordinates of the atoms, we make use of \texttt{local\_maxima}. The maxima and minima in the electron density are returned as integers corresponding to specific cells of the electron density array.
+
+<<ch03>>=
+idx <- local_maxima(rtmp$rr)
+idx
+@
+
+\noindent Such indices can then be used in conjunction with the electron density to find out which integer corresponds to maxima and, accordingly, display the peaks' location.
+
+\begin{center}
+<<ch04,out.width='3.2in'>>=
+plot(rtmp$x,rtmp$rr,type="l",xlab="x",ylab=expression(rho))
+for (i in 1:length(idx)) {
+  points(rtmp$x[idx[i]],rtmp$rr[idx[i]],pch=16,cex=1.5,col=2)
+}
+
+# Peak coordinates found and comparison with published values
+for (i in 1:length(idx)) {
+  line <- sprintf("%5.3f  %5.3f\n",rtmp$x[idx[i]],sdata$x0[i])
+  cat(line)
+}
+@
+\end{center}
+
+\noindent Peaks coordinates are not exactly equal to the published-structure coordinates because B factors and gaussians' widths slightly shift them. Fixing B to zero and using smaller values of the atomic number (Z) will improve accuracy, as shown in the following snippet where $Z=1$ and $B=0$ for all atoms.
+
+\begin{center}
+<<ch05,out.width='3.2in'>>=
+# Change all 3 B factors to 0
+sdata$B <- c(0,0,0)
+
+# Change all atoms to hydrogens
+sdata$Z <- c(1,1,1)
+sdata
+
+# Electron density
+rtmp <- structure_gauss(sdata,N=1000) # Grid with 10000 point
+plot(rtmp$x,rtmp$rr,type="l",xlab="x",ylab=expression(rho))
+
+# Local maxima
+idx <- local_maxima(rtmp$rr)
+idx
+for (i in 1:length(idx)) {
+  line <- sprintf("%5.3f  %5.3f\n",rtmp$x[idx[i]],sdata$x0[i])
+  cat(line)
+}
+@
+\end{center}
+
+\section{Peak search when the density come from a correct Fourier synthesis}
+The interest in finding the coordinates of the electron density peaks' coordinates exists because the atoms' positions are obviously unknown. The electron density is in general computed not as an exact analytic expression made out of gaussians, but as a Fourier synthesis in which the Fourier amplitudes are obtained experimentally and the Fourier phases have to be found with one of the many \emph{phasing methods} existing in structural crystallography. In what follows we will assume that the phases found coincide with the correct phases; in the next section we will explore the effect on the electron density of both errors in the Fourier amplitudes and phases.\\
+\noindent To start, let's reload the cyanate data with the unmodified Z and B values. Then let's compute the pristine structure factors for Miller indices $h=0,1,\dots,20$. This will provide us with correct Fourier amplitudes and phases.
+
+\begin{center}
+<<ch06,out.width='3.2in'>>=
+sdata <- load_structure("cyanate")
+hidx <- 0:20
+ftmp <- strufac(hidx,sdata)
+
+# This should coincide with 8(O) + 6(C) + 7(N) = 21
+ftmp$Fmod[1]
+
+# Exact analytic electron density
+rtmp0 <- structure_gauss(sdata,N=1000)
+
+# Electron density as Fourier synthesis
+rtmp1 <- fousynth(sdata$a,ftmp$Fmod,ftmp$Fpha,hidx,N=1000)
+
+# The two densities should overlap nicely
+plot(rtmp0$x,rtmp0$rr,type="l",col=2,xlab="x",
+     ylab=expression(rho))
+points(rtmp1$x,rtmp1$rr,type="l",lty=2)
+@
+\end{center}
+
+\noindent We should expect, given the very good overlap of the curves, no much difference in the coordinates of peaks' maxima for both the analytic and Fourier-synthesisdensities.
+
+<<ch07>>=
+idx0 <- local_maxima(rtmp0$rr)  # Analytic-density case
+idx1 <- local_maxima(rtmp1$rr)  # Fourier-synthesis case
+for (i in 1:length(idx)) {
+  line <- sprintf("%5.3f  %5.3f  %5.3f\n",
+           rtmp0$x[idx0[i]],rtmp1$x[idx1[i]],sdata$x0[i])
+  cat(line)
+}
+@
+
+\section{Correct phases and biased Fourier amplitudes}
+The Fourier amplitudes derived from experimental data are in general affected by experimental errors. This is reflected in their values being different from the corresponding calculated values. As seen in Tutorial 01, experimental (or \emph{observed}) amplitudes can be loaded in memory using the function \texttt{load\_data}. A comparison between calculated and experimental amplitudes is carried out in the following snippet code.
+
+<<ch08>>=
+fdata <- load_data(sname="cyanate")
+
+# Names of fdata elements
+ntmp <- names(fdata)
+for (a in ntmp) {
+  ltmp <- sprintf("%s  ",a)
+  cat(ltmp)
+}
+
+# The experimental amplitudes are available only 
+# for 10 Miller indices (no h=0 term as it's not
+# experimentally available)
+hidx <- fdata$hidx
+hidx
+
+# Let's re-compute calculated s.f.
+ftmp <- strufac(hidx,sdata)
+
+# The observed amplitudes should be different
+# from the correct amplitudes.
+# The available experimental precision is to 3 decimals
+for (i in 1:length(hidx)) {
+  line <- sprintf("%10.3f  %10.3f\n",
+                   fdata$Fobs[i],ftmp$Fmod[i])
+  cat(line)
+}
+@
+
+The differences observed above are due to experimental factors affecting the intensities collected. As these, in the specific case, are not real but simulated factors, we sould consider them only as an illustration of the fact that observed amplitudes are in general different from calculated amplitudes. The ways in which observed amplitudes are simulated is explained in \texttt{crone} documentation. These essentially act on the number of photons scattered (number simulated using the Poisson distribution) and on the average shift of the atoms composing the structure from their equilibrium position as due to lattice imperfections (these add up to the vibrational motion described by the B factors). Some of the observed amplitudes are negative as simulation of the fact that often real 3D small amplitudes are negative as a consequence of the methods of extraction of the intensities from the diffraction images, due to background subtraction. 
+
+<<ch09>>=
+# The phases are the same (as they are calculated)
+# The available precision of the phases in the data file
+# is to 1 decimal. 
+for (i in 1:length(hidx)) {
+  line <- sprintf("%10.1f  %10.1f\n",
+                   fdata$Phicalc[i],ftmp$Fpha[i])
+  cat(line)
+}
+@
+
+\noindent Let's compare the electron densities with correct phases using both calculated and observed amplitudes.
+
+\begin{center}
+<<ch10,out.width='3.2in'>>=
+hidx <- 1:10
+
+# Correct electron density
+rtmp0 <- fousynth(sdata$a,ftmp$Fmod,ftmp$Fpha,hidx,N=1000)
+
+# Biased electron density
+rtmp1 <- fousynth(sdata$a,fdata$Fobs,fdata$Phicalc,hidx,N=1000)
+
+# Min and max to include all density in the plot
+m <- min(rtmp0$rr,rtmp1$rr)
+M <- max(rtmp0$rr,rtmp1$rr)
+
+# Comparison
+plot(rtmp0$x,rtmp0$rr,type="l",xlab="x",ylab=expression(rho),
+     col=2,ylim=c(m,M))
+points(rtmp1$x,rtmp1$rr,type="l",lty=2)
+@
+\end{center}
+
+\noindent Clearly there are differences between the two electron densities. These should be reflected in differences between the coordinates corresponding to the peaks.
+
+<<ch11>>=
+idx0 <- local_maxima(rtmp0$rr)  # Correct amplitudes
+idx1 <- local_maxima(rtmp1$rr)  # Observed amplitudes
+for (i in 1:length(idx)) {
+  line <- sprintf("%5.3f  %5.3f  %5.3f\n",
+           rtmp0$x[idx0[i]],rtmp1$x[idx1[i]],sdata$x0[i])
+  cat(line)
+}
+@
+
+\section{Biased phases and correct Fourier amplitudes}
+Also phases affect the electron density, like amplitudes (in 3D crystallography they play, in fact, a greater role in determining the electron density). To see this let's try and change the correct and calculated phases with some random errors of approximately 20 degrees and keep the correct amplitudes. We are interested, as before, to explore the variation of the electron density and of the related peaks coordinates.
+
+\begin{center}
+<<ch12,out.width='3.2in'>>=
+hidx <- 1:10
+
+# Random errors added to phases
+set.seed(8761)
+pha_new <- ftmp$Fpha + rnorm(length(ftmp$Fpha),mean=30,sd=10)
+idx <- which(pha_new < -180)
+if (length(idx) > 0) {
+  pha_new[idx] <- pha_new[idx]+360
+}
+idx <- which(pha_new > 180)
+if (length(idx) > 0) {
+  pha_new[idx] <- pha_new[idx]-360
+}
+
+# Correct electron density
+rtmp0 <- fousynth(sdata$a,ftmp$Fmod,ftmp$Fpha,hidx,N=1000)
+
+# Biased electron density
+rtmp1 <- fousynth(sdata$a,ftmp$Fmod,pha_new,hidx,N=1000)
+
+# Min and max to include all density in the plot
+m <- min(rtmp0$rr,rtmp1$rr)
+M <- max(rtmp0$rr,rtmp1$rr)
+
+# Comparison
+plot(rtmp0$x,rtmp0$rr,type="l",xlab="x",ylab=expression(rho),
+     col=2,ylim=c(m,M))
+points(rtmp1$x,rtmp1$rr,type="l",lty=2)
+@
+\end{center}
+
+\noindent The biased density seems to include now a "systematic" rather than "random" error (the whole density seems to be slightly shifted towards the right). This type of bias is present in a stronger form in 3D crystallography. Obviously, also the peaks coordinates will be affected by the same systematic bias.
+
+<<ch13>>=
+idx0 <- local_maxima(rtmp0$rr)  # Analytic-density case
+idx1 <- local_maxima(rtmp1$rr)  # Fourier-synthesis case
+for (i in 1:length(idx)) {
+  line <- sprintf("%5.3f  %5.3f  %5.3f\n",
+           rtmp0$x[idx0[i]],rtmp1$x[idx1[i]],sdata$x0[i])
+  cat(line)
+}
+@
+
+\section{Biased phases and biased amplitudes}
+In real situations both amplitudes and phases are biased; the amplitudes are biased by experimental errors and the phases are biased because they reflect a wrong model. The resulting electron density will contain the effect of both types of bias.
+
+\begin{center}
+<<ch14,out.width='3.2in'>>=
+# Correct electron density
+rtmp0 <- fousynth(sdata$a,ftmp$Fmod,ftmp$Fpha,hidx,N=1000)
+
+# Biased electron density
+rtmp1 <- fousynth(sdata$a,fdata$Fobs,pha_new,hidx,N=1000)
+
+# Min and max to include all density in the plot
+m <- min(rtmp0$rr,rtmp1$rr)
+M <- max(rtmp0$rr,rtmp1$rr)
+
+# Comparison
+plot(rtmp0$x,rtmp0$rr,type="l",xlab="x",ylab=expression(rho),
+     col=2,ylim=c(m,M))
+points(rtmp1$x,rtmp1$rr,type="l",lty=2)
+@
+\end{center}
+
+\printbibliography
+
+
+\end{document}
