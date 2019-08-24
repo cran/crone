@@ -1,6 +1,3 @@
-## ----setup, eval= TRUE, include= FALSE, cache= FALSE, echo= FALSE--------
-system ("biber tutorial01")
-
 ## ----ch01----------------------------------------------------------------
 library(crone)
 load_structure()

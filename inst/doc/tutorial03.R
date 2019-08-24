@@ -1,6 +1,3 @@
-## ----setup, eval= TRUE, include= FALSE, cache= FALSE, echo= FALSE--------
-system ("biber tutorial03")
-
 ## ----ch01----------------------------------------------------------------
 library(crone)
 sdata <- load_structure("cyanate")

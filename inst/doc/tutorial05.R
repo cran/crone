@@ -1,6 +1,3 @@
-## ----setup, eval= TRUE, include= FALSE, cache= FALSE, echo= FALSE--------
-system ("biber tutorial05")
-
 ## ----ch01,out.width='3.2in',echo=FALSE-----------------------------------
 library(crone)
 sdata <- load_structure("thiocyanate")

@@ -1,6 +1,3 @@
-## ----setup, eval= TRUE, include= FALSE, cache= FALSE, echo= FALSE--------
-system ("biber tutorial04")
-
 ## ----ch01,out.width='3.2in'----------------------------------------------
 library(crone)
 sdata <- load_structure("pinkerton2015")
